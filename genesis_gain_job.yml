@@ -1,0 +1,33 @@
+resources:
+  jobs:
+    genesis_gain_pipeline:
+      name: genesis-gain-pipeline
+      tasks:
+        - task_key: run_pipeline
+          python_wheel_task:
+            package_name: genesis_gain
+            entry_point: run
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - apify-client
+              - databricks-sdk
+              - mcp
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * TUE,THU"
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      queue:
+        enabled: true
+      email_notifications:
+        on_failure:
+          - data.ai@genesisig.com
+          - rmenon@genesisig.com
+        on_success:
+          - data.ai@genesisig.com
+      tags:
+        system: genesis-gain
+        owner: data.ai
