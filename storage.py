@@ -111,6 +111,17 @@ RUN_LOG_SCHEMA = StructType(
     ]
 )
 
+#pending ask to roohi
+REGISTRY_SCHEMA = StructType(
+    [
+        _S("agent", StringType()),
+        _S("cluster", StringType()),
+        _S("term", StringType()),
+        _S("weight", DoubleType()),
+        _S("notes", StringType()),
+    ]
+)
+
 
 def item_id(source_id: str, url: str) -> str:
     return hashlib.sha256(f"{source_id}|{url}".encode()).hexdigest()[:24]
@@ -127,6 +138,7 @@ def ensure_tables() -> None:
         config.TABLES.quarantine: QUARANTINE_SCHEMA,
         config.TABLES.corpus: CORPUS_SCHEMA,
         config.TABLES.run_log: RUN_LOG_SCHEMA,
+        config.TABLES.registry: REGISTRY_SCHEMA, #ask to roohi
     }
     for name, schema in specs.items():
         s.createDataFrame([], schema).write.mode("append").saveAsTable(name)

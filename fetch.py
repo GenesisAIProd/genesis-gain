@@ -115,6 +115,14 @@ def registry_queries(agent: str) -> list[str]:
         .toPandas()["term"]
         .tolist()
     )
+    if not terms:
+        raise RuntimeError(
+            f"No watch terms for agent '{agent}' in "
+            f"{config.CATALOG}.{config.SCHEMA}.{config.TABLES.registry}. "
+            f"The registry is seed data, not derived: ensure_tables creates it "
+            f"empty, so a fresh sandbox must clone it from a populated schema "
+            f"(see prod_setup.SEED_TABLES)."
+        )
     context = "(AI OR chip OR smartphone OR laptop OR GPU OR device OR launch)"
     if agent == "policy":
         context = "(tariff OR export OR trade OR sanction OR policy OR semiconductor)"
