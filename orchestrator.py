@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
-from . import config, feature_vector, prompts
+from . import config, feature_vector, history, prompts
 from .agents import pipeline
 from .fetch import fetch_agent_corpus
 from .observability import Meter, budget_status, ensure_usage_table
@@ -94,5 +94,10 @@ def run_pipeline(agents=config.AGENTS, use_cache=True, reconcile_window=None,
     report["backup_path"] = snapshot_backup(run_id)
     report["run_cost_usd"] = meter.flush()
     report["budget"] = budget_status()
+    # Dated history tables and export files (CSV, JSON, Excel). Raises on failure, so a
+    # week can never go missing silently. Added 22 Sep 2026.
+    if succeeded:
+        report["history"] = history.record(run_id)
+        print("history recorded; export files in", report["history"]["folder"])
     report["status"] = "degraded" if report["degraded"] else "ok"
     return report
