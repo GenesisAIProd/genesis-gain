@@ -1,0 +1,4 @@
+command: ["streamlit", "run", "app.py"]
+env:
+  - name: GAIN_CATALOG
+    value: "genesis_prod"

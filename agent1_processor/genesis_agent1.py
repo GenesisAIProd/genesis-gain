@@ -144,18 +144,24 @@ def norm_key(key):
 
 class Agent1:
 
-    def __init__(self, spark, dbutils, catalog):
+    def __init__(self, spark, dbutils, catalog, fetch=True):
         if not catalog:
             raise ValueError("catalog must be stated, for example genesis_prod")
         self.spark = spark
         self.cat = catalog
         self._last_call = {}
-        from apify_client import ApifyClient
-        tok = dbutils.secrets.get(scope="genesis", key="apify-token")
-        u = ApifyClient(tok).user("me").get()
-        pwd = u.proxy.password if hasattr(u, "proxy") else u["proxy"]["password"]
-        px = "http://groups-UNBLOCKER:" + pwd + "@proxy.apify.com:8000"
-        self.proxies = {"http": px, "https": px}
+        # fetch=False is QUESTION-ONLY mode, used by the dashboard app: it answers from
+        # the database and never reads the Apify token, so the app's identity needs no
+        # access to that secret. Only the monthly job, running as data.ai, fetches.
+        self.fetch_enabled = bool(fetch)
+        self.proxies = None
+        if self.fetch_enabled:
+            from apify_client import ApifyClient
+            tok = dbutils.secrets.get(scope="genesis", key="apify-token")
+            u = ApifyClient(tok).user("me").get()
+            pwd = u.proxy.password if hasattr(u, "proxy") else u["proxy"]["password"]
+            px = "http://groups-UNBLOCKER:" + pwd + "@proxy.apify.com:8000"
+            self.proxies = {"http": px, "https": px}
         self.reload_config()
 
     def reload_config(self):
@@ -184,6 +190,9 @@ class Agent1:
         self._last_call[source] = time.time()
 
     def _fetch(self, source, url):
+        if not self.fetch_enabled:
+            raise RuntimeError("This Agent1 was built in question-only mode (fetch=False) and "
+                               "cannot fetch websites. Only the monthly job fetches.")
         route = self.health.get(source, {}).get("required_route") or "direct"
         self._pace(source)
         kw = {"proxies": self.proxies, "verify": False} if route == "unblocker" else {}

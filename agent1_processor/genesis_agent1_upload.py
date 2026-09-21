@@ -33,6 +33,7 @@ STATUS = {"found": "found",
           "queued": "not in the database yet, scheduled for the next monthly run",
           "no_processor_in_query": "no processor found in this row",
           "empty": "no processor given in this row",
+          "family": "a processor family, not one processor: please give the model number",
           "over_limit": "not checked: the file has more than 100 different processors"}
 
 

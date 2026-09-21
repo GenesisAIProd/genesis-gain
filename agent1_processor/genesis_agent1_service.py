@@ -19,6 +19,14 @@ OPEN_TOOLS       = {"ask", "ask_many", "job_status", "job_results",
 RESTRICTED_TOOLS = {"run_backfill", "process_queue", "submit_csv"}
 
 
+def _put_file(path, text):
+    # The Databricks Files API works in notebooks, jobs and apps alike. dbutils exists only
+    # in the first two, and the dashboard app has no dbutils of its own. Replaces a branch
+    # that, without dbutils, skipped writing and still returned the paths as if written.
+    from databricks.sdk import WorkspaceClient
+    WorkspaceClient().files.upload(path, io.BytesIO(text.encode("utf-8")), overwrite=True)
+
+
 class Caller:
     # Who is asking. genesis_user and api are internal; session is an external
     # customer on the shared demo link.
@@ -243,11 +251,9 @@ class Agent1Service:
             "WHERE processor_key IN (" + inlist + ")").collect()}
 
     def _write_files(self, job_id, csv_text, json_text):
-        from pyspark.dbutils import DBUtils
-        du = DBUtils(self.spark)
         base = "/Volumes/" + self.cat + "/market_config/exports/upload_" + job_id[:12]
-        du.fs.put(base + ".csv", csv_text, True)
-        du.fs.put(base + ".json", json_text, True)
+        _put_file(base + ".csv", csv_text)
+        _put_file(base + ".json", json_text)
         return base + ".csv", base + ".json"
 
     def _finish_job(self, job_id, json_path, csv_path):
@@ -315,18 +321,12 @@ class Agent1Service:
             recs.append(dict(zip(cols, vals)))
         jp = base + ".json"
         fp = base + ".csv"
-        try:
-            from pyspark.dbutils import DBUtils
-            du = DBUtils(self.spark)
-        except Exception:
-            du = None
         payload = json.dumps({"job_id": job_id, "results": recs}, indent=2, default=str)
         buf = io.StringIO()
         w = csv.DictWriter(buf, fieldnames=cols)
         w.writeheader()
         for r in recs:
             w.writerow(r)
-        if du:
-            du.fs.put(jp, payload, True)
-            du.fs.put(fp, buf.getvalue(), True)
+        _put_file(jp, payload)
+        _put_file(fp, buf.getvalue())
         return jp, fp

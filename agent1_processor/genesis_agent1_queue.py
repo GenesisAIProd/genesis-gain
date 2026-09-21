@@ -141,6 +141,19 @@ class QueueService:
             return {"status": "found", "processor_key": key, "matched_slug": slug,
                     "match_score": score, "facts": facts, "query_id": qid,
                     "asked_about": piece}
+        # A FAMILY named without a model number, such as "Core i5" or "Snapdragon 8", is not
+        # one processor. If we hold members of it, list them. Never report "not in the
+        # database" for it, and never queue a row with no model number for the monthly run,
+        # which would try to source a processor that does not exist. Found 21 Sep 2026.
+        if not mod:
+            members = self._family_members(comp, fam)
+            if members:
+                name = (comp + " " + fam).strip()
+                return {"status": "family", "query_id": qid, "asked_about": piece,
+                        "family": name, "members": members,
+                        "message": (name + " is a processor family, not one processor. "
+                                    "The database holds " + str(len(members)) + " of them. "
+                                    "Ask about a specific model for a single answer.")}
         self._write(qid, raw, comp, fam, mod, dc, None, slug, score, "queued", now,
                     "awaiting the next monthly run")
         return {"status": "queued", "query_id": qid, "asked_about": piece,
@@ -167,25 +180,25 @@ class QueueService:
             return {"status": "no_processor_in_query", "query_id": qid,
                     "message": "I could not find a processor in that request."}
 
-        res = self.mt.match(self.agent, comp, fam, mod)
-        slug, score = res.get("slug"), float(res.get("score") or 0.0)
-        key = self._key_for(slug, comp, fam, mod)
-        facts = self._facts_for(key) if key else []
+        # One path for every question: answer_parts holds the matching, the family rule,
+        # the doubled-brand fix and the queuing. ask() used to keep its own copy, which had
+        # already drifted from answer_parts. Consolidated 21 Sep 2026.
+        return self.answer_parts(comp, fam, mod, raw_query)
 
-        if facts:
-            self._write(qid, raw_query, comp, fam, mod, dc, key, slug, score,
-                        "matched", now, None)
-            return {"status": "found", "processor_key": key, "matched_slug": slug,
-                    "match_score": score, "facts": facts, "query_id": qid}
-
-        self._write(qid, raw_query, comp, fam, mod, dc, None, slug, score,
-                    "queued", now, "awaiting the next monthly run")
-        return {"status": "queued", "query_id": qid,
-                "parsed": {"company": comp, "family": fam, "model_number": mod},
-                "device_class": dc,
-                "message": ("This processor is not in the database yet. It has been "
-                            "recorded and is scheduled to be sourced in the next "
-                            "monthly run.")}
+    def _family_members(self, comp, fam):
+        # Members of a family, fastest first. Whole-word prefix, so "Snapdragon 8" finds
+        # "Snapdragon 8 Gen 3" but never "Snapdragon 888".
+        import genesis_agent1 as ga
+        c, f, _ = ga.canonical_parts(comp, fam, "")
+        f = (f or "").lower().replace("'", "")
+        if not f:
+            return []
+        where = "(lower(processor_family) = '" + f + "' OR lower(processor_family) LIKE '" + f + " %')"
+        if c:
+            where = "lower(processor_brand) = '" + c.lower().replace("'", "") + "' AND " + where
+        return [r["processor_key"] for r in self.spark.sql(
+            "SELECT processor_key FROM " + self.cat + ".market_gold.processor_reference WHERE " +
+            where + " ORDER BY geekbench_single DESC NULLS LAST, processor_key LIMIT 200").collect()]
 
     def _key_for(self, slug, comp, fam, mod):
         """Find the processor_key for a chip. THREE routes, tried in order, and every

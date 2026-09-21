@@ -1,0 +1,9 @@
+streamlit==1.45.1
+databricks-connect>=16.0
+databricks-sdk
+pandas
+numpy
+requests
+beautifulsoup4
+lxml
+openpyxl
