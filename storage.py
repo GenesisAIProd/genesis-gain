@@ -155,6 +155,20 @@ def cache_corpus(rows: list[dict], agent: str) -> int:
     return len(rows)
 
 
+def judged_urls(agent: str) -> set:
+    """Articles this agent has already judged: any finding or quarantined claim from them.
+
+    The fetch window deliberately overlaps the previous run, so an article missed last
+    week still gets judged. This is what stops an overlapping article that WAS judged
+    from being judged, and counted, a second time. Added 21 Sep 2026.
+    """
+    rows = spark().sql(
+        f"SELECT source_url FROM {config.TABLES.findings} WHERE agent = '{agent}' "
+        f"UNION SELECT source_url FROM {config.TABLES.quarantine} WHERE agent = '{agent}'"
+    ).collect()
+    return {r[0] for r in rows if r[0]}
+
+
 def load_corpus(agent: str, bodied_only: bool = True) -> list[dict]:
     clause = "AND has_body = true" if bodied_only else ""
     frame = spark().sql(

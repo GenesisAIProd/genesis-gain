@@ -16,7 +16,7 @@ from . import config, feature_vector, prompts
 from .agents import pipeline
 from .fetch import fetch_agent_corpus
 from .observability import Meter, budget_status, ensure_usage_table
-from .storage import ensure_tables, load_corpus, log_run, snapshot_backup
+from .storage import ensure_tables, judged_urls, load_corpus, log_run, snapshot_backup
 from .supervisor import run_supervisor
 
 
@@ -33,11 +33,18 @@ def _corpus_for(agent, use_cache, limit, incremental=False):
 def _run_one_agent(agent, run_id, use_cache, limit, meter, incremental=False):
     started = datetime.now(timezone.utc)
     articles = _corpus_for(agent, use_cache, limit, incremental)
+    # Skip articles this agent already judged. The overlap in the fetch window stays, so
+    # anything missed last run is still judged now; nothing is judged, or counted, twice.
+    judged = judged_urls(agent)
+    fresh = [a for a in articles if a.get("url") not in judged]
+    print(f"[{agent}] {len(articles)} articles, {len(articles) - len(fresh)} already judged "
+          f"and skipped, {len(fresh)} to judge")
     bundle = prompts.for_agent(agent, meter)
     counts = pipeline.run_agent(
-        articles, bundle["extract"], bundle["triage"], bundle["judge"],
+        fresh, bundle["extract"], bundle["triage"], bundle["judge"],
         agent, run_id, bundle.get("version", "v3_cot"), meter,
     )
+    counts["already_judged"] = len(articles) - len(fresh)
     log_run(
         {
             "run_id": run_id, "started_at": started,

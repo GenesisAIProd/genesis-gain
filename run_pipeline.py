@@ -53,6 +53,11 @@ def main() -> int:
         },
         default=str,
     ))
+    # An agent that failed outright means missing data for the week: fail the job so the
+    # failure email goes out. Runs merely "degraded" by a few article errors stay green.
+    if report.get("failed_agents"):
+        print("FAILED AGENTS:", report["failed_agents"])
+        return 1
     return 0
 
 

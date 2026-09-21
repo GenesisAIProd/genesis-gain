@@ -132,9 +132,12 @@ def fetch_agent_corpus(agent: str, incremental: bool = False) -> int:
     batches = _batches(queries, config.FETCH_BATCH_SIZE)
     seen: set[str] = set()
     corpus: list[dict] = []
+    ok, failed, first_error = 0, 0, None
     for i, batch in enumerate(batches, start=1):
         try:
-            for article in fetch_batch(batch, config.MAX_ARTICLES_PER_QUERY, agent, incremental):
+            got = fetch_batch(batch, config.MAX_ARTICLES_PER_QUERY, agent, incremental)
+            ok += 1
+            for article in got:
                 key = item_id(article["source_id"], article["url"])
                 if key in seen:
                     continue
@@ -142,10 +145,24 @@ def fetch_agent_corpus(agent: str, incremental: bool = False) -> int:
                 article["item_id"] = key
                 article["agent"] = agent
                 corpus.append(article)
-        except Exception:
+        except Exception as error:
+            # One failed batch must not stop the rest, but every failure is counted.
+            failed += 1
+            first_error = first_error or (type(error).__name__ + ": " + str(error)[:200])
             continue
         if i % config.CACHE_EVERY == 0 and corpus:
             _flush(corpus, agent)
+    # FAIL LOUDLY. Before 21 Sep 2026 a fetch that failed completely left the previous
+    # cache in place, and the run quietly re-judged old articles for five weeks.
+    if batches and ok == 0:
+        raise RuntimeError(f"all {failed} fetch batches failed for {agent}; the old cache "
+                           f"was NOT reused. First error: {first_error}")
+    if not corpus:
+        raise RuntimeError(f"fetching returned no articles at all for {agent}; the old "
+                           f"cache was NOT reused")
+    if failed:
+        print(f"[{agent}] warning: {failed} of {len(batches)} fetch batches failed. "
+              f"First error: {first_error}")
     return _flush(corpus, agent)
 
 
